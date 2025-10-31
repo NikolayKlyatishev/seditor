@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "seditor"
 version = "0.1.0"
-description = "Simple terminal editor with file tree and editor panes"
+description = "Simple and functional terminal editor with split-pane interface and syntax highlighting"
 authors = ["User <user@example.com>"]
 readme = "README.md"
 packages = [{include = "seditor"}]
