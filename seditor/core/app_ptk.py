@@ -440,15 +440,21 @@ class AppPTK:
         def _(event) -> None:
             self._manual_save()
 
+        # Option+Left (Alt+B в Emacs) - к началу предыдущего слова
         @self.kb.add('escape', 'b', filter=editor_focus)
         def _(event) -> None:
             buffer = event.app.current_buffer
-            buffer.start_of_word()
+            pos = buffer.document.find_start_of_previous_word()
+            if pos:
+                buffer.cursor_position += pos
 
+        # Option+Right (Alt+F в Emacs) - к началу следующего слова
         @self.kb.add('escape', 'f', filter=editor_focus)
         def _(event) -> None:
             buffer = event.app.current_buffer
-            buffer.end_of_word()
+            pos = buffer.document.find_next_word_beginning()
+            if pos:
+                buffer.cursor_position += pos
 
     def _save_if_needed(self, message: str, force_timestamp: bool = True) -> bool:
         file_path = self.editor_pane.get_file_path()
