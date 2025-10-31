@@ -29,7 +29,7 @@ def get_lexer_for_file(file_path: Optional[str]) -> Optional[PygmentsLexer]:
     try:
         # ??????? ???????? ?????? ?? ????? ?????
         lexer = get_lexer_for_filename(file_path)
-        return PygmentsLexer(lexer)
+        return PygmentsLexer(type(lexer))
     except ClassNotFound:
         # ???? ?? ???????, ??????? ?? ??????????
         ext = os.path.splitext(file_path)[1].lstrip('.')
@@ -72,7 +72,7 @@ def get_lexer_for_file(file_path: Optional[str]) -> Optional[PygmentsLexer]:
         if language:
             try:
                 lexer = get_lexer_by_name(language)
-                return PygmentsLexer(lexer)
+                return PygmentsLexer(type(lexer))
             except ClassNotFound:
                 pass
     
@@ -95,6 +95,9 @@ class EditorPanePTK:
         # ???? ? ?????
         self.file_path: Optional[str] = None
         self.buffer: Optional[Buffer] = None
+        self._dirty: bool = False
+        self._last_saved_snapshot: str = ""
+        self._suspend_dirty_events: bool = False
         
         # ??????? ????? prompt_toolkit
         self._create_buffer()
@@ -107,6 +110,23 @@ class EditorPanePTK:
             # ????????? ?????????? ???????, ??? ??? ?? ????? ????????? ???? ????? KeyBindings
             enable_history_search=False,
         )
+        self.buffer.on_text_changed += self._on_buffer_text_changed
+
+    def _on_buffer_text_changed(self, _buffer: Buffer) -> None:
+        """?????????? ?????? ?????? ??????? ??????????"""
+        if self._suspend_dirty_events:
+            return
+        self._dirty = True
+
+    def _set_buffer_text(self, text: str) -> None:
+        """????????????? ????? ?? ????? ????????? ??? ????????"""
+        if not self.buffer:
+            return
+        self._suspend_dirty_events = True
+        self.buffer.text = text
+        self._suspend_dirty_events = False
+        self._dirty = False
+        self._last_saved_snapshot = text
     
     def load_file(self, file_path: str) -> bool:
         """
@@ -124,7 +144,7 @@ class EditorPanePTK:
                 content = f.read()
             
             # ????????????? ????? ? ?????
-            self.buffer.text = content
+            self._set_buffer_text(content)
             self.file_path = file_path
             
             # ????????????? ?????? ??? ????????? ??????????
@@ -145,7 +165,7 @@ class EditorPanePTK:
                 try:
                     with open(file_path, 'r', encoding=encoding) as f:
                         content = f.read()
-                    self.buffer.text = content
+                    self._set_buffer_text(content)
                     self.file_path = file_path
                     self.buffer.cursor_position = 0
                     return True
@@ -187,15 +207,32 @@ class EditorPanePTK:
         save_path = file_path or self.file_path
         if not save_path:
             return False
+
+        current_text = self.buffer.text
+        if (
+            not file_path
+            and save_path == self.file_path
+            and not self._dirty
+            and current_text == self._last_saved_snapshot
+        ):
+            return True
         
         try:
             with open(save_path, 'w', encoding='utf-8') as f:
-                f.write(self.buffer.text)
+                f.write(current_text)
             
-            if not file_path:
-                # ????????? ???? ???? ????????? ? ??? ?? ????
-                self.file_path = save_path
+            self.file_path = save_path
             
+            self._last_saved_snapshot = current_text
+            self._dirty = False
             return True
         except (OSError, PermissionError):
             return False
+
+    def has_unsaved_changes(self) -> bool:
+        """????????, ???? ?? ????? ?????????????? ?????????"""
+        if not self.buffer:
+            return False
+        if self._dirty:
+            return True
+        return self.buffer.text != self._last_saved_snapshot

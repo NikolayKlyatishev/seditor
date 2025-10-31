@@ -155,6 +155,42 @@ class FileTreePane:
 
         return "".join(output)
 
+    def _ensure_selection_visible(self, display_height: int, total_items: int) -> None:
+        """??????????? ??????? ???????? ? ???????? ????????"""
+        if display_height <= 0:
+            self.scroll_offset = 0
+            return
+        if self.tree.selected_index >= self.scroll_offset + display_height:
+            self.scroll_offset = self.tree.selected_index - display_height + 1
+        elif self.tree.selected_index < self.scroll_offset:
+            self.scroll_offset = self.tree.selected_index
+        max_scroll = max(0, total_items - display_height)
+        if self.scroll_offset > max_scroll:
+            self.scroll_offset = max_scroll
+        if self.scroll_offset < 0:
+            self.scroll_offset = 0
+
+    def get_display_lines(self, max_lines: int | None = None, max_width: int | None = None) -> list[tuple[str, bool]]:
+        """???????? ?????? ??? ??????????? ?? prompt_toolkit"""
+        visible_items = self.tree.get_visible_items()
+        selected_item = self.tree.get_selected_item()
+
+        display_height = max_lines if max_lines is not None else self.get_display_height()
+        width_limit = max_width if max_width is not None else max(0, self.width - 2)
+
+        self._ensure_selection_visible(display_height, len(visible_items))
+
+        start_index = self.scroll_offset
+        end_index = len(visible_items) if display_height is None else min(len(visible_items), start_index + display_height)
+
+        lines: list[tuple[str, bool]] = []
+        for idx in range(start_index, end_index):
+            item = visible_items[idx]
+            name = self._format_item_name(item, width_limit)
+            lines.append((name, item == selected_item))
+
+        return lines
+
     def move_up(self) -> None:
         """Переместить выделение вверх"""
         self.tree.move_up()
