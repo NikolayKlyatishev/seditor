@@ -16,12 +16,14 @@ from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.filters import Condition
-from prompt_toolkit.styles import Style
+from prompt_toolkit.styles import Style, merge_styles, style_from_pygments_cls
 from prompt_toolkit.lexers import DynamicLexer
+from pygments.styles import get_style_by_name
 
 from seditor.terminal.layout import Layout as ScreenLayout
 from seditor.components.editor_ptk import EditorPanePTK
 from seditor.components.file_tree import FileTreePane
+from seditor.components.command_palette import CommandPalette
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -40,12 +42,14 @@ class AppPTK:
         self.screen_layout = ScreenLayout(100, 30)
         self.file_tree_pane = FileTreePane(self.screen_layout)
         self.editor_pane = EditorPanePTK(self.screen_layout)
+        self.command_palette = CommandPalette()
 
         self.focused_pane: str = 'tree'
         self.current_file: Optional[str] = None
         self._status_message: str = ''
         self._autosave_task: Optional[asyncio.Task] = None
         self._running: bool = False
+        self._current_theme: str = 'vscode-dark'  # Текущая тема
 
         self.kb = KeyBindings()
         self._setup_keybindings()
@@ -83,12 +87,29 @@ class AppPTK:
             height=Dimension.exact(1),
             style='class:status',
         )
+        
+        # Командная палитра
+        self.command_palette_control = FormattedTextControl(text=self._get_command_palette_text)
+        self.command_palette_input = BufferControl(
+            buffer=self.command_palette.buffer,
+            focusable=True,
+        )
+        self.command_palette_window = Window(
+            content=self.command_palette_control,
+            height=lambda: Dimension.exact(min(12, len(self.command_palette.filtered_items) + 3)) if self.command_palette.is_visible else Dimension.exact(0),
+            style='class:command_palette',
+        )
+        self.command_palette_input_window = Window(
+            content=self.command_palette_input,
+            height=Dimension.exact(1) if self.command_palette.is_visible else Dimension.exact(0),
+            style='class:command_palette.input',
+        )
 
         body = VSplit(
             [self.tree_window, self.separator_window, self.editor_window],
             padding=0,
         )
-        container = HSplit([body, self.status_window])
+        container = HSplit([body, self.command_palette_window, self.command_palette_input_window, self.status_window])
 
         self.layout = PTKLayout(container, focused_element=self.tree_window)
         self.app = Application(
@@ -122,25 +143,80 @@ class AppPTK:
             self.screen_layout.update_size(size.columns, size.rows)
 
     def _create_style(self) -> Style:
-        return Style(
-            [
-                ('tree', 'bg:#1e1e1e fg:#d4d4d4'),
-                ('tree.header', 'fg:#888'),
-                ('tree.text', 'fg:#d4d4d4'),
-                ('tree.selected', 'fg:#d4d4d4'),
-                ('tree.selected.focused', 'bg:#3a3d41 fg:#ffffff'),
-                ('tree.empty', 'fg:#666'),
-                ('separator', 'fg:#444'),
-                ('editor', 'bg:#1e1e1e fg:#d4d4d4'),
-                ('editor.line-number', '#858585'),
-                ('editor.cursor', 'bg:#aeafad'),
-                ('editor.selection', 'bg:#264f78'),
-                ('status', 'bg:#1b1b1b fg:#d4d4d4'),
-                ('status.label', 'bold'),
-                ('status.separator', 'fg:#555'),
-                ('status.message', 'fg:#9cdcfe'),
+        # Выбираем тему в зависимости от настройки
+        if self._current_theme == 'vscode-dark':
+            # Наша кастомная тема VS Code Dark+
+            pygments_style = Style([])
+            syntax_colors = [
+                ('pygments.keyword', 'fg:#c586c0'),
+                ('pygments.keyword.namespace', 'fg:#c586c0'),
+                ('pygments.keyword.type', 'fg:#4ec9b0'),
+                ('pygments.name', 'fg:#9cdcfe'),
+                ('pygments.name.builtin', 'fg:#4ec9b0'),
+                ('pygments.name.function', 'fg:#dcdcaa'),
+                ('pygments.name.class', 'fg:#4ec9b0'),
+                ('pygments.name.decorator', 'fg:#dcdcaa'),
+                ('pygments.string', 'fg:#ce9178'),
+                ('pygments.string.doc', 'fg:#6a9955'),
+                ('pygments.number', 'fg:#b5cea8'),
+                ('pygments.comment', 'fg:#6a9955'),
+                ('pygments.comment.single', 'fg:#6a9955'),
+                ('pygments.comment.multiline', 'fg:#6a9955'),
+                ('pygments.operator', 'fg:#d4d4d4'),
+                ('pygments.punctuation', 'fg:#d4d4d4'),
+                ('pygments.literal', 'fg:#569cd6'),
+                ('pygments.literal.string', 'fg:#ce9178'),
             ]
-        )
+        else:
+            # Стандартная тема Pygments
+            try:
+                pygments_style = style_from_pygments_cls(get_style_by_name(self._current_theme))
+                syntax_colors = []
+            except Exception:
+                # Если тема не найдена, используем нашу кастомную
+                pygments_style = Style([])
+                syntax_colors = [
+                    ('pygments.keyword', 'fg:#c586c0'),
+                    ('pygments.name.function', 'fg:#dcdcaa'),
+                    ('pygments.string', 'fg:#ce9178'),
+                    ('pygments.comment', 'fg:#6a9955'),
+                ]
+        
+        # Базовые стили для UI
+        ui_style = Style([
+            # Дерево файлов
+            ('tree', 'bg:#1e1e1e fg:#d4d4d4'),
+            ('tree.header', 'fg:#888'),
+            ('tree.text', 'fg:#d4d4d4'),
+            ('tree.selected', 'fg:#d4d4d4'),
+            ('tree.selected.focused', 'bg:#3a3d41 fg:#ffffff'),
+            ('tree.empty', 'fg:#666'),
+            ('separator', 'fg:#444'),
+            
+            # Редактор
+            ('editor', 'bg:#1e1e1e fg:#d4d4d4'),
+            ('editor.line-number', '#858585'),
+            ('editor.cursor', 'bg:#aeafad'),
+            ('editor.selection', 'bg:#264f78'),
+            
+            # Статус-бар
+            ('status', 'bg:#1b1b1b fg:#d4d4d4'),
+            ('status.label', 'bold'),
+            ('status.separator', 'fg:#555'),
+            ('status.message', 'fg:#9cdcfe'),
+            ('status.hint', 'fg:#888 italic'),
+            
+            # Командная палитра
+            ('command_palette', 'bg:#252526 fg:#cccccc'),
+            ('command_palette.header', 'bg:#252526 fg:#ffffff bold'),
+            ('command_palette.separator', 'bg:#252526 fg:#555'),
+            ('command_palette.item', 'bg:#252526 fg:#cccccc'),
+            ('command_palette.selected', 'bg:#094771 fg:#ffffff bold'),
+            ('command_palette.empty', 'bg:#252526 fg:#888 italic'),
+            ('command_palette.input', 'bg:#3c3c3c fg:#cccccc'),
+        ] + syntax_colors)
+        
+        return merge_styles([pygments_style, ui_style])
 
     def _get_tree_content(self) -> FormattedText:
         self._update_screen_layout_from_output()
@@ -198,7 +274,45 @@ class AppPTK:
         if self._status_message:
             fragments.append(('class:status.separator', ' | '))
             fragments.append(('class:status.message', self._status_message))
+        
+        # Показываем подсказку о командной палитре
+        if not self.command_palette.is_visible:
+            fragments.append(('class:status.separator', ' | '))
+            fragments.append(('class:status.hint', 'Ctrl+P - команды'))
 
+        return FormattedText(fragments)
+    
+    def _get_command_palette_text(self) -> FormattedText:
+        """Отрисовка командной палитры"""
+        if not self.command_palette.is_visible:
+            return FormattedText([])
+        
+        fragments: list[tuple[str, str]] = []
+        
+        # Заголовок
+        if self.command_palette.mode == 'command':
+            header = '  Команды (введите для поиска):'
+        else:
+            header = '  Выберите тему:'
+        
+        fragments.append(('class:command_palette.header', header))
+        fragments.append(('', '\n'))
+        fragments.append(('class:command_palette.separator', '─' * 60))
+        fragments.append(('', '\n'))
+        
+        # Список команд/тем
+        lines = self.command_palette.get_display_lines(max_lines=10)
+        for name, is_selected in lines:
+            if is_selected:
+                fragments.append(('class:command_palette.selected', f'▶ {name}'))
+            else:
+                fragments.append(('class:command_palette.item', f'  {name}'))
+            fragments.append(('', '\n'))
+        
+        if not lines:
+            fragments.append(('class:command_palette.empty', '  Ничего не найдено'))
+            fragments.append(('', '\n'))
+        
         return FormattedText(fragments)
 
     def _set_status(self, message: str, with_timestamp: bool = False) -> None:
@@ -236,16 +350,56 @@ class AppPTK:
             self._set_status('Не удалось открыть файл')
 
     def _setup_keybindings(self) -> None:
-        @self.kb.add('tab')
+        command_palette_visible = Condition(lambda: self.command_palette.is_visible)
+        command_palette_hidden = Condition(lambda: not self.command_palette.is_visible)
+        
+        # Ctrl+P - открыть командную палитру
+        @self.kb.add('c-p', filter=command_palette_hidden)
+        def _(event) -> None:
+            self.command_palette.show()
+            self.layout.focus(self.command_palette_input_window)
+            event.app.invalidate()
+        
+        # Escape - закрыть командную палитру
+        @self.kb.add('escape', filter=command_palette_visible)
+        def _(event) -> None:
+            self.command_palette.hide()
+            if self.focused_pane == 'tree':
+                self.layout.focus(self.tree_window)
+            else:
+                self.layout.focus(self.editor_window)
+            event.app.invalidate()
+        
+        # Enter - выбрать команду/тему
+        @self.kb.add('enter', filter=command_palette_visible)
+        def _(event) -> None:
+            self._handle_command_palette_enter()
+            event.app.invalidate()
+        
+        # Up/Down - навигация в командной палитре
+        @self.kb.add('up', filter=command_palette_visible)
+        def _(event) -> None:
+            self.command_palette.move_up()
+            event.app.invalidate()
+        
+        @self.kb.add('down', filter=command_palette_visible)
+        def _(event) -> None:
+            self.command_palette.move_down()
+            event.app.invalidate()
+        
+        # Обработка изменения текста в командной палитре
+        self.command_palette.buffer.on_text_changed += lambda _: self._on_command_palette_text_changed()
+        
+        @self.kb.add('tab', filter=command_palette_hidden)
         def _(event) -> None:
             self._toggle_focus()
 
-        @self.kb.add('q')
+        @self.kb.add('q', filter=command_palette_hidden)
         def _(event) -> None:
             self._request_exit()
 
-        tree_focus = Condition(lambda: self.focused_pane == 'tree')
-        editor_focus = Condition(lambda: self.focused_pane == 'editor')
+        tree_focus = Condition(lambda: self.focused_pane == 'tree' and not self.command_palette.is_visible)
+        editor_focus = Condition(lambda: self.focused_pane == 'editor' and not self.command_palette.is_visible)
 
         @self.kb.add('enter', filter=tree_focus)
         def _(event) -> None:
@@ -319,6 +473,59 @@ class AppPTK:
             self._set_status('Изменений нет')
             return
         self._save_if_needed('Сохранено вручную')
+    
+    def _on_command_palette_text_changed(self) -> None:
+        """Обработчик изменения текста в командной палитре"""
+        self.command_palette.on_text_changed()
+        if self.app.is_running:
+            self.app.invalidate()
+    
+    def _handle_command_palette_enter(self) -> None:
+        """Обработка Enter в командной палитре"""
+        selected = self.command_palette.get_selected_command()
+        
+        if not selected:
+            return
+        
+        if self.command_palette.mode == 'command':
+            # Режим выбора команды
+            if selected == 'themes':
+                self.command_palette._enter_theme_select()
+            elif selected == 'save':
+                self._manual_save()
+                self.command_palette.hide()
+                if self.focused_pane == 'tree':
+                    self.layout.focus(self.tree_window)
+                else:
+                    self.layout.focus(self.editor_window)
+            elif selected == 'quit':
+                self._request_exit()
+        
+        elif self.command_palette.mode == 'theme_select':
+            # Режим выбора темы
+            self._change_theme(selected)
+            self.command_palette.hide()
+            if self.focused_pane == 'tree':
+                self.layout.focus(self.tree_window)
+            else:
+                self.layout.focus(self.editor_window)
+    
+    def _change_theme(self, theme_id: str) -> None:
+        """Сменить тему подсветки синтаксиса"""
+        self._current_theme = theme_id
+        
+        # Пересоздаём стиль с новой темой
+        self.app.style = self._create_style()
+        
+        # Находим название темы для сообщения
+        theme_name = theme_id
+        for name, tid in CommandPalette.AVAILABLE_THEMES:
+            if tid == theme_id:
+                theme_name = name
+                break
+        
+        self._set_status(f'Тема изменена: {theme_name}')
+        logger.info(f'Theme changed to: {theme_id}')
 
     def _request_exit(self) -> None:
         if not self._running:
