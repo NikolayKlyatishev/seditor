@@ -59,6 +59,9 @@ class AppPTK:
             focusable=True,
             show_cursor=False,
         )
+        # Обработчик клика мыши для дерева файлов
+        self.tree_control.mouse_handler = self._tree_mouse_handler
+        
         self.tree_window = Window(
             content=self.tree_control,
             width=Dimension(weight=1, max=self.screen_layout.tree_width),
@@ -118,6 +121,7 @@ class AppPTK:
             full_screen=True,
             style=self._create_style(),
             refresh_interval=0.5,
+            mouse_support=True,  # Включаем поддержку мыши
         )
         self.app.pre_run_callables.append(self._on_app_start)
 
@@ -130,6 +134,37 @@ class AppPTK:
     def _get_editor_lexer(self):
         """Возвращает лексер для редактора (вызывается BufferControl)."""
         return self.editor_pane.get_lexer()
+    
+    def _tree_mouse_handler(self, mouse_event):
+        """Обработчик событий мыши для дерева файлов"""
+        from prompt_toolkit.mouse_events import MouseEventType
+        
+        if mouse_event.event_type == MouseEventType.MOUSE_UP:
+            # Переключаем фокус на дерево файлов при клике
+            if self.focused_pane != 'tree':
+                self._focus_tree()
+            
+            # Вычисляем на какую строку кликнули
+            clicked_line = mouse_event.position.y
+            
+            # Получаем список видимых элементов
+            visible_items = self.file_tree_pane.get_visible_items()
+            
+            if 0 <= clicked_line < len(visible_items):
+                target_item = visible_items[clicked_line]
+                
+                # Устанавливаем выделение на кликнутый элемент
+                self.file_tree_pane.tree.selected_node = target_item
+                
+                # Обрабатываем клик
+                if not target_item.is_dir:
+                    # Файл - открываем его
+                    self._open_file(target_item.path)
+                else:
+                    # Директория - разворачиваем/сворачиваем
+                    target_item.expanded = not target_item.expanded
+                
+                self.app.invalidate()
 
     def _update_screen_layout_from_output(self) -> None:
         output = getattr(self.app, 'output', None)

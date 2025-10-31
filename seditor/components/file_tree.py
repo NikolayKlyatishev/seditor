@@ -358,3 +358,21 @@ class FileTreePane:
     def refresh(self) -> None:
         """Обновить дерево"""
         self.tree.refresh()
+    
+    def get_visible_items(self) -> list[FileNode]:
+        """
+        Получить список видимых элементов (с учётом прокрутки)
+        
+        Returns:
+            Список видимых FileNode
+        """
+        all_items = self.tree.get_visible_items()
+        
+        if not all_items:
+            return []
+        
+        # Применяем прокрутку
+        start_index = self.scroll_offset
+        end_index = min(start_index + self.height, len(all_items))
+        
+        return all_items[start_index:end_index]
