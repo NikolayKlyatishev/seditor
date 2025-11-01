@@ -242,3 +242,63 @@ class FileTree:
                     refresh_expanded(child)
         
         refresh_expanded(self.root)
+    
+    def reveal_path(self, file_path: str) -> bool:
+        """
+        Раскрыть дерево до указанного файла и установить на него выделение
+        
+        Args:
+            file_path: Абсолютный путь к файлу
+            
+        Returns:
+            True если файл найден и выделен, False иначе
+        """
+        # Нормализуем пути
+        file_path = os.path.abspath(file_path)
+        
+        # Проверяем, что файл находится в текущем дереве
+        if not file_path.startswith(self.current_path):
+            return False
+        
+        # Получаем относительный путь от корня дерева
+        relative_path = os.path.relpath(file_path, self.current_path)
+        
+        # Разбиваем путь на компоненты
+        path_parts = relative_path.split(os.sep)
+        
+        # Раскрываем дерево по пути
+        current_node = self.root
+        
+        for i, part in enumerate(path_parts[:-1]):  # Все кроме последнего (имени файла)
+            # Сканируем детей если ещё не сканировали
+            if not current_node.scanned:
+                current_node.scan_children()
+            
+            # Ищем нужную директорию среди детей
+            found = False
+            for child in current_node.children:
+                if child.name == part and child.is_dir:
+                    # Раскрываем директорию
+                    child.expand()
+                    current_node = child
+                    found = True
+                    break
+            
+            if not found:
+                return False
+        
+        # Сканируем последнюю директорию
+        if not current_node.scanned:
+            current_node.scan_children()
+        
+        # Ищем файл среди детей последней директории
+        target_filename = path_parts[-1]
+        visible_items = self.get_visible_items()
+        
+        for idx, item in enumerate(visible_items):
+            if item.name == target_filename and item.path == file_path:
+                # Нашли файл - устанавливаем выделение
+                self.selected_index = idx
+                return True
+        
+        return False

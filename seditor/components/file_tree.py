@@ -359,6 +359,18 @@ class FileTreePane:
         """Обновить дерево"""
         self.tree.refresh()
     
+    def reveal_path(self, file_path: str) -> bool:
+        """
+        Раскрыть дерево до указанного файла
+        
+        Args:
+            file_path: Путь к файлу
+            
+        Returns:
+            True если файл найден и выделен
+        """
+        return self.tree.reveal_path(file_path)
+    
     def get_visible_items(self) -> list[FileNode]:
         """
         Получить список видимых элементов (с учётом прокрутки)

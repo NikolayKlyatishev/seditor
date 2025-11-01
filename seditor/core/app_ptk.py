@@ -24,6 +24,7 @@ from seditor.terminal.layout import Layout as ScreenLayout
 from seditor.components.editor_ptk import EditorPanePTK
 from seditor.components.file_tree import FileTreePane
 from seditor.components.command_palette import CommandPalette
+from seditor.search import SemanticIndexer
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -50,6 +51,10 @@ class AppPTK:
         self._autosave_task: Optional[asyncio.Task] = None
         self._running: bool = False
         self._current_theme: str = 'vscode-dark'  # Текущая тема
+        
+        # Семантический индексатор
+        self.semantic_indexer: Optional[SemanticIndexer] = None
+        self._indexing_task: Optional[asyncio.Task] = None
 
         self.kb = KeyBindings()
         self._setup_keybindings()
@@ -327,15 +332,19 @@ class AppPTK:
         # Заголовок
         if self.command_palette.mode == 'command':
             header = '  Команды (введите для поиска):'
-        else:
+        elif self.command_palette.mode == 'theme_select':
             header = '  Выберите тему:'
+        elif self.command_palette.mode == 'search':
+            header = '  Поиск файлов (введите описание):'
+        else:
+            header = '  Команды:'
         
         fragments.append(('class:command_palette.header', header))
         fragments.append(('', '\n'))
         fragments.append(('class:command_palette.separator', '─' * 60))
         fragments.append(('', '\n'))
         
-        # Список команд/тем
+        # Список команд/тем/файлов
         lines = self.command_palette.get_display_lines(max_lines=10)
         for name, is_selected in lines:
             if is_selected:
@@ -345,7 +354,10 @@ class AppPTK:
             fragments.append(('', '\n'))
         
         if not lines:
-            fragments.append(('class:command_palette.empty', '  Ничего не найдено'))
+            if self.command_palette.mode == 'search':
+                fragments.append(('class:command_palette.empty', '  Ничего не найдено по запросу'))
+            else:
+                fragments.append(('class:command_palette.empty', '  Ничего не найдено'))
             fragments.append(('', '\n'))
         
         return FormattedText(fragments)
@@ -381,6 +393,25 @@ class AppPTK:
             self.current_file = path
             self._focus_editor()
             self._set_status(f'Открыт {os.path.basename(path)}')
+        else:
+            self._set_status('Не удалось открыть файл')
+    
+    def _open_file_and_reveal(self, path: str) -> None:
+        """
+        Открыть файл и раскрыть дерево до него
+        
+        Args:
+            path: Путь к файлу
+        """
+        # Открываем файл
+        if self.editor_pane.load_file(path):
+            self.current_file = path
+            # Раскрываем дерево до файла
+            if self.file_tree_pane.reveal_path(path):
+                self._set_status(f'Открыт {os.path.basename(path)}')
+            else:
+                self._set_status(f'Открыт {os.path.basename(path)} (файл вне текущего дерева)')
+            self._focus_editor()
         else:
             self._set_status('Не удалось открыть файл')
 
@@ -442,9 +473,13 @@ class AppPTK:
             if result:
                 self._open_file(result)
             else:
+                # Вошли в директорию - запускаем индексацию
+                current_path = self.file_tree_pane.tree.current_path
                 self._set_status(
-                    os.path.basename(self.file_tree_pane.tree.current_path) or self.file_tree_pane.tree.current_path
+                    os.path.basename(current_path) or current_path
                 )
+                # Запускаем индексацию в фоне
+                self._start_indexing(current_path)
 
         @self.kb.add('up', filter=tree_focus)
         def _(event) -> None:
@@ -518,6 +553,15 @@ class AppPTK:
     def _on_command_palette_text_changed(self) -> None:
         """Обработчик изменения текста в командной палитре"""
         self.command_palette.on_text_changed()
+        
+        # Если в режиме поиска - выполняем поиск
+        if self.command_palette.mode == 'search':
+            query = self.command_palette.buffer.text
+            if query and len(query.strip()) > 0:
+                self._perform_search(query)
+            else:
+                self.command_palette.set_search_results([])
+        
         if self.app.is_running:
             self.app.invalidate()
     
@@ -530,8 +574,17 @@ class AppPTK:
         
         if self.command_palette.mode == 'command':
             # Режим выбора команды
-            if selected == 'themes':
+            if selected == 'search':
+                self.command_palette._enter_search()
+            elif selected == 'themes':
                 self.command_palette._enter_theme_select()
+            elif selected == 'reindex':
+                self._manual_reindex()
+                self.command_palette.hide()
+                if self.focused_pane == 'tree':
+                    self.layout.focus(self.tree_window)
+                else:
+                    self.layout.focus(self.editor_window)
             elif selected == 'save':
                 self._manual_save()
                 self.command_palette.hide()
@@ -550,6 +603,12 @@ class AppPTK:
                 self.layout.focus(self.tree_window)
             else:
                 self.layout.focus(self.editor_window)
+        
+        elif self.command_palette.mode == 'search':
+            # Режим поиска файлов - selected это путь к файлу
+            self._open_file_and_reveal(selected)
+            self.command_palette.hide()
+            self.layout.focus(self.editor_window)
     
     def _change_theme(self, theme_id: str) -> None:
         """Сменить тему подсветки синтаксиса"""
@@ -567,6 +626,98 @@ class AppPTK:
         
         self._set_status(f'Тема изменена: {theme_name}')
         logger.info(f'Theme changed to: {theme_id}')
+    
+    def _start_indexing(self, directory_path: str) -> None:
+        """
+        Запустить индексацию директории в фоне
+        
+        Args:
+            directory_path: Путь к директории для индексации
+        """
+        # Отменяем предыдущую задачу индексации если есть
+        if self._indexing_task and not self._indexing_task.done():
+            self._indexing_task.cancel()
+        
+        # Создаём индексатор если ещё не создан или путь изменился
+        if self.semantic_indexer is None or self.semantic_indexer.root_path != directory_path:
+            try:
+                self.semantic_indexer = SemanticIndexer(directory_path)
+                logger.info(f'Created semantic indexer for: {directory_path}')
+            except Exception as e:
+                logger.error(f'Failed to create indexer: {e}')
+                self._set_status('Ошибка создания индексатора')
+                return
+        
+        # Проверяем, нужна ли индексация
+        if self.semantic_indexer.is_indexed():
+            count = self.semantic_indexer.get_indexed_count()
+            self._set_status(f'Индекс готов ({count} файлов)')
+            return
+        
+        # Запускаем индексацию в фоне
+        self._indexing_task = self.app.create_background_task(self._index_directory_async())
+    
+    async def _index_directory_async(self) -> None:
+        """Асинхронная индексация директории"""
+        try:
+            self._set_status('Индексация...')
+            
+            def progress_callback(current: int, total: int):
+                """Обновление прогресса индексации"""
+                self._set_status(f'Индексация: {current}/{total} файлов')
+                if self.app.is_running:
+                    self.app.invalidate()
+            
+            # Запускаем индексацию в executor чтобы не блокировать UI
+            loop = asyncio.get_event_loop()
+            indexed_count = await loop.run_in_executor(
+                None,
+                lambda: self.semantic_indexer.index_directory(progress_callback)
+            )
+            
+            self._set_status(f'Индексация завершена ({indexed_count} файлов)')
+            logger.info(f'Indexing completed: {indexed_count} files')
+            
+        except asyncio.CancelledError:
+            self._set_status('Индексация отменена')
+            logger.info('Indexing cancelled')
+        except Exception as e:
+            self._set_status('Ошибка индексации')
+            logger.error(f'Indexing failed: {e}', exc_info=True)
+    
+    def _perform_search(self, query: str) -> None:
+        """
+        Выполнить семантический поиск
+        
+        Args:
+            query: Поисковый запрос
+        """
+        if self.semantic_indexer is None:
+            self.command_palette.set_search_results([])
+            return
+        
+        try:
+            results = self.semantic_indexer.search(query, top_k=10)
+            self.command_palette.set_search_results(results)
+        except Exception as e:
+            logger.error(f'Search failed: {e}')
+            self.command_palette.set_search_results([])
+    
+    def _manual_reindex(self) -> None:
+        """Ручная переиндексация текущей директории"""
+        current_path = self.file_tree_pane.tree.current_path
+        
+        # Пересоздаём индексатор
+        try:
+            self.semantic_indexer = SemanticIndexer(current_path)
+            logger.info(f'Recreated semantic indexer for reindexing: {current_path}')
+        except Exception as e:
+            logger.error(f'Failed to create indexer: {e}')
+            self._set_status('Ошибка создания индексатора')
+            return
+        
+        # Запускаем индексацию
+        self._indexing_task = self.app.create_background_task(self._index_directory_async())
 
     def _request_exit(self) -> None:
         if not self._running:
