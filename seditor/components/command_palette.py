@@ -32,7 +32,8 @@ class CommandPalette:
         self.is_visible = False
         self.selected_index = 0
         self.filtered_items: List[Tuple[str, str, Callable]] = []
-        self.mode = 'command'  # 'command' или 'theme_select'
+        self.mode = 'command'  # 'command', 'theme_select', или 'search'
+        self.search_results: List[Tuple[str, str, float]] = []  # Результаты поиска (path, name, score)
         
     def show(self) -> None:
         """Показать командную палитру"""
@@ -63,7 +64,9 @@ class CommandPalette:
         if self.mode == 'command':
             # Режим выбора команды
             all_commands = [
+                ('Поиск файлов (Search)', 'search', lambda: self._enter_search()),
                 ('Выбрать тему (Themes)', 'themes', lambda: self._enter_theme_select()),
+                ('Переиндексировать (Reindex)', 'reindex', lambda: None),  # Будет обработано в app
                 ('Сохранить файл (Save)', 'save', lambda: None),  # Будет обработано в app
                 ('Выход (Quit)', 'quit', lambda: None),  # Будет обработано в app
             ]
@@ -91,6 +94,14 @@ class CommandPalette:
                     for name, theme_id in self.AVAILABLE_THEMES
                 ]
         
+        elif self.mode == 'search':
+            # Режим поиска файлов - результаты обновляются через set_search_results
+            # Здесь просто форматируем существующие результаты
+            self.filtered_items = [
+                (f'{name} ({path})', path, lambda p=path: None)
+                for path, name, score in self.search_results
+            ]
+        
         # Сбрасываем индекс если вышли за пределы
         if self.selected_index >= len(self.filtered_items):
             self.selected_index = max(0, len(self.filtered_items) - 1)
@@ -100,6 +111,24 @@ class CommandPalette:
         self.mode = 'theme_select'
         self.buffer.text = ''
         self.selected_index = 0
+        self._update_filtered_items()
+    
+    def _enter_search(self) -> None:
+        """Войти в режим поиска файлов"""
+        self.mode = 'search'
+        self.buffer.text = ''
+        self.selected_index = 0
+        self.search_results = []
+        self._update_filtered_items()
+    
+    def set_search_results(self, results: List[Tuple[str, str, float]]) -> None:
+        """
+        Установить результаты поиска
+        
+        Args:
+            results: Список кортежей (path, name, score)
+        """
+        self.search_results = results
         self._update_filtered_items()
     
     def move_up(self) -> None:
@@ -129,6 +158,22 @@ class CommandPalette:
         for idx, (name, cmd, _) in enumerate(self.filtered_items[:max_lines]):
             is_selected = (idx == self.selected_index)
             lines.append((name, is_selected))
+        return lines
+    
+    def get_display_lines_with_paths(self, max_lines: int = 10) -> List[Tuple[str, str, bool]]:
+        """
+        Получить строки для отображения с разделением имени и пути (для режима поиска)
+        
+        Returns:
+            Список кортежей (имя_файла, путь, выбран)
+        """
+        lines = []
+        for idx, (path, name, score) in enumerate(self.search_results[:max_lines]):
+            is_selected = (idx == self.selected_index)
+            # Получаем относительный путь
+            import os
+            rel_path = path if not os.path.isabs(path) else os.path.relpath(path)
+            lines.append((name, rel_path, is_selected))
         return lines
     
     def on_text_changed(self) -> None:

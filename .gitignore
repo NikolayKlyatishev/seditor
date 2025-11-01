@@ -55,3 +55,6 @@ dmypy.json
 seditor_debug.log
 seditor_keys.log
 *.log
+
+# Seditor semantic search index
+.seditor/
