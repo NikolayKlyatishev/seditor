@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "seditor"
-version = "0.1.0"
+version = "2.0.2"
 description = "Simple and functional terminal editor with split-pane interface and syntax highlighting"
 authors = ["User <user@example.com>"]
 readme = "README.md"
@@ -11,14 +11,16 @@ seditor = "seditor.main:main"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-blessed = "^1.20.0"
 pyperclip = "^1.8.2"
 prompt-toolkit = "^3.0.0"
 pygments = "^2.17.0"
-chromadb = "^0.4.0"
-sentence-transformers = "^2.2.0"
-torch = "^2.0.0"
-numpy = "^1.26.0,<2.0.0"
+chromadb = {version = "^0.4.0", optional = true}
+sentence-transformers = {version = "^2.2.0", optional = true}
+torch = {version = "^2.0.0", optional = true}
+numpy = {version = "^1.26.0,<2.0.0", optional = true}
+
+[tool.poetry.extras]
+ai = ["chromadb", "sentence-transformers", "torch", "numpy"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
