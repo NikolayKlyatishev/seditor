@@ -81,18 +81,11 @@ class SemanticIndexer:
         
         try:
             import chromadb
-            from chromadb.config import Settings
             
             logger.info(f'Initializing ChromaDB at: {self.chroma_dir}')
             
-            # Настройки для ChromaDB
-            settings = Settings(
-                chroma_db_impl="duckdb+parquet",
-                persist_directory=self.chroma_dir,
-                anonymized_telemetry=False
-            )
-            
-            self._client = chromadb.Client(settings)
+            # Используем новый API ChromaDB (PersistentClient)
+            self._client = chromadb.PersistentClient(path=self.chroma_dir)
             
             # Получаем или создаём коллекцию
             try:

@@ -160,6 +160,22 @@ class CommandPalette:
             lines.append((name, is_selected))
         return lines
     
+    def get_display_lines_with_paths(self, max_lines: int = 10) -> List[Tuple[str, str, bool]]:
+        """
+        Получить строки для отображения с разделением имени и пути (для режима поиска)
+        
+        Returns:
+            Список кортежей (имя_файла, путь, выбран)
+        """
+        lines = []
+        for idx, (path, name, score) in enumerate(self.search_results[:max_lines]):
+            is_selected = (idx == self.selected_index)
+            # Получаем относительный путь
+            import os
+            rel_path = path if not os.path.isabs(path) else os.path.relpath(path)
+            lines.append((name, rel_path, is_selected))
+        return lines
+    
     def on_text_changed(self) -> None:
         """Обработчик изменения текста в поле ввода"""
         self._update_filtered_items()

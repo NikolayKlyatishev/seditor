@@ -109,7 +109,7 @@ class AppPTK:
         )
         self.command_palette_input_window = Window(
             content=self.command_palette_input,
-            height=Dimension.exact(1) if self.command_palette.is_visible else Dimension.exact(0),
+            height=lambda: Dimension.exact(1) if self.command_palette.is_visible else Dimension.exact(0),
             style='class:command_palette.input',
         )
 
@@ -251,7 +251,11 @@ class AppPTK:
             ('command_palette.header', 'bg:#252526 fg:#ffffff bold'),
             ('command_palette.separator', 'bg:#252526 fg:#555'),
             ('command_palette.item', 'bg:#252526 fg:#cccccc'),
+            ('command_palette.item.filename', 'bg:#252526 fg:#ffffff bold'),
+            ('command_palette.item.path', 'bg:#252526 fg:#888'),
             ('command_palette.selected', 'bg:#094771 fg:#ffffff bold'),
+            ('command_palette.selected.filename', 'bg:#094771 fg:#ffffff bold'),
+            ('command_palette.selected.path', 'bg:#094771 fg:#aaaaaa'),
             ('command_palette.empty', 'bg:#252526 fg:#888 italic'),
             ('command_palette.input', 'bg:#3c3c3c fg:#cccccc'),
         ] + syntax_colors)
@@ -345,13 +349,31 @@ class AppPTK:
         fragments.append(('', '\n'))
         
         # Список команд/тем/файлов
-        lines = self.command_palette.get_display_lines(max_lines=10)
-        for name, is_selected in lines:
-            if is_selected:
-                fragments.append(('class:command_palette.selected', f'▶ {name}'))
-            else:
-                fragments.append(('class:command_palette.item', f'  {name}'))
-            fragments.append(('', '\n'))
+        if self.command_palette.mode == 'search':
+            # Специальное форматирование для результатов поиска
+            lines = self.command_palette.get_display_lines_with_paths(max_lines=10)
+            for filename, path, is_selected in lines:
+                prefix = '▶ ' if is_selected else '  '
+                if is_selected:
+                    fragments.append(('class:command_palette.selected', prefix))
+                    fragments.append(('class:command_palette.selected.filename', filename))
+                    fragments.append(('class:command_palette.selected', ' '))
+                    fragments.append(('class:command_palette.selected.path', f'({path})'))
+                else:
+                    fragments.append(('class:command_palette.item', prefix))
+                    fragments.append(('class:command_palette.item.filename', filename))
+                    fragments.append(('class:command_palette.item', ' '))
+                    fragments.append(('class:command_palette.item.path', f'({path})'))
+                fragments.append(('', '\n'))
+        else:
+            # Обычное форматирование для команд и тем
+            lines = self.command_palette.get_display_lines(max_lines=10)
+            for name, is_selected in lines:
+                if is_selected:
+                    fragments.append(('class:command_palette.selected', f'▶ {name}'))
+                else:
+                    fragments.append(('class:command_palette.item', f'  {name}'))
+                fragments.append(('', '\n'))
         
         if not lines:
             if self.command_palette.mode == 'search':
@@ -473,13 +495,13 @@ class AppPTK:
             if result:
                 self._open_file(result)
             else:
-                # Вошли в директорию - запускаем индексацию
+                # Вошли в директорию
                 current_path = self.file_tree_pane.tree.current_path
                 self._set_status(
                     os.path.basename(current_path) or current_path
                 )
-                # Запускаем индексацию в фоне
-                self._start_indexing(current_path)
+                # Запускаем индексацию только если это Git-репозиторий
+                self._start_indexing_if_git_repo(current_path)
 
         @self.kb.add('up', filter=tree_focus)
         def _(event) -> None:
@@ -626,6 +648,33 @@ class AppPTK:
         
         self._set_status(f'Тема изменена: {theme_name}')
         logger.info(f'Theme changed to: {theme_id}')
+    
+    def _is_git_repository(self, directory_path: str) -> bool:
+        """
+        Проверить, является ли директория Git-репозиторием
+        
+        Args:
+            directory_path: Путь к директории
+            
+        Returns:
+            True если в директории есть .git
+        """
+        git_path = os.path.join(directory_path, '.git')
+        return os.path.isdir(git_path)
+    
+    def _start_indexing_if_git_repo(self, directory_path: str) -> None:
+        """
+        Запустить индексацию только если директория является Git-репозиторием
+        
+        Args:
+            directory_path: Путь к директории для проверки и индексации
+        """
+        if not self._is_git_repository(directory_path):
+            logger.info(f'Skipping indexing for non-git directory: {directory_path}')
+            return
+        
+        logger.info(f'Git repository detected, starting indexing: {directory_path}')
+        self._start_indexing(directory_path)
     
     def _start_indexing(self, directory_path: str) -> None:
         """
