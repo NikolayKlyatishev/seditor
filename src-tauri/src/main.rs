@@ -45,6 +45,7 @@ fn main() {
             api::settings::update_settings,
             api::terminal::run_terminal_command,
             api::terminal::get_directory_tree,
+            api::terminal::get_directories,
             api::terminal::read_file,
             api::chat::query_ollama_cmd,
         ])

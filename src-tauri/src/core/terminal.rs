@@ -39,7 +39,12 @@ pub fn resolve_target_directory(current: &Path, target: &str) -> AppResult<PathB
     }
 }
 
-/// Выполняет команду в указанной директории
+/// Определяет пользовательский shell
+fn get_user_shell() -> String {
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+}
+
+/// Выполняет команду в указанной директории через пользовательский shell
 pub async fn execute_command(
     command: &str,
     current_dir: &PathBuf,
@@ -52,10 +57,15 @@ pub async fn execute_command(
     let current_dir_for_output = current_dir.clone();
     let command_owned = command.to_string();
     let current_dir_owned = current_dir.clone();
+    let shell = get_user_shell();
     
     let output = tauri::async_runtime::spawn_blocking(move || {
-        Command::new("/bin/sh")
-            .arg("-c")
+        // Используем login shell (-l) для загрузки профиля пользователя
+        // и интерактивный режим (-i) для загрузки .zshrc и других конфигов
+        Command::new(&shell)
+            .arg("-l")  // login shell
+            .arg("-i")  // interactive
+            .arg("-c")  // command
             .arg(&command_owned)
             .current_dir(&current_dir_owned)
             .output()

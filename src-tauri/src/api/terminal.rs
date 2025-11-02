@@ -79,6 +79,70 @@ pub fn get_directory_tree(state: State<'_, AppState>, path: String) -> Result<Ve
     Ok(file_tree)
 }
 
+/// Получает список директорий для автодополнения cd
+#[tauri::command]
+pub fn get_directories(state: State<'_, AppState>, prefix: String) -> Result<Vec<String>, String> {
+    let current_dir = state.current_dir.lock().clone();
+    
+    // Определяем базовую директорию для поиска
+    let (base_dir, search_prefix) = if prefix.starts_with('/') {
+        // Абсолютный путь
+        let path = PathBuf::from(&prefix);
+        if let Some(parent) = path.parent() {
+            (parent.to_path_buf(), path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string())
+        } else {
+            (PathBuf::from("/"), String::new())
+        }
+    } else if prefix.starts_with("~/") {
+        // Домашняя директория
+        if let Some(home) = directories::UserDirs::new().map(|d| d.home_dir().to_path_buf()) {
+            let relative = prefix.strip_prefix("~/").unwrap_or("");
+            let path = home.join(relative);
+            if let Some(parent) = path.parent() {
+                (parent.to_path_buf(), path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string())
+            } else {
+                (home, String::new())
+            }
+        } else {
+            return Ok(vec![]);
+        }
+    } else {
+        // Относительный путь
+        let path = current_dir.join(&prefix);
+        if let Some(parent) = path.parent() {
+            (parent.to_path_buf(), path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string())
+        } else {
+            (current_dir.clone(), prefix.clone())
+        }
+    };
+    
+    // Читаем директорию
+    let entries = std::fs::read_dir(&base_dir)
+        .map_err(|e| format!("Не удалось прочитать директорию: {}", e))?;
+    
+    let mut dirs = Vec::new();
+    for entry in entries.flatten() {
+        if let Ok(metadata) = entry.metadata() {
+            if metadata.is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    // Пропускаем скрытые директории если не запрошены явно
+                    if !search_prefix.starts_with('.') && name.starts_with('.') {
+                        continue;
+                    }
+                    
+                    if name.to_lowercase().starts_with(&search_prefix.to_lowercase()) {
+                        // Возвращаем только имя директории
+                        dirs.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    
+    dirs.sort();
+    Ok(dirs)
+}
+
 /// Читает содержимое файла
 #[tauri::command]
 pub fn read_file(state: State<'_, AppState>, path: String) -> Result<String, String> {

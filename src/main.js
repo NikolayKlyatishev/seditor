@@ -4,6 +4,28 @@ async function initTauri() {
   console.log('✓ Tauri API инициализирован');
 }
 
+// Список команд для автодополнения
+const terminalCommands = [
+  // Навигация
+  'cd', 'ls', 'pwd', 'tree',
+  // Файловые операации
+  'cat', 'touch', 'mkdir', 'rm', 'cp', 'mv', 'chmod', 'chown',
+  // Поиск
+  'find', 'grep', 'locate',
+  // Текстовые редакторы
+  'nano', 'vim', 'vi',
+  // Системные
+  'ps', 'top', 'kill', 'df', 'du', 'free', 'uname',
+  // Git
+  'git status', 'git add', 'git commit', 'git push', 'git pull', 'git log', 'git diff', 'git branch', 'git checkout', 'git merge',
+  // Node/npm
+  'npm install', 'npm run', 'npm start', 'npm test', 'npm build', 'node',
+  // Cargo/Rust
+  'cargo build', 'cargo run', 'cargo test', 'cargo check', 'cargo clean',
+  // Другие
+  'echo', 'clear', 'history', 'man', 'which', 'whereis'
+];
+
 const themes = [
   {
     id: "graphite",
@@ -112,7 +134,12 @@ const state = {
   historyIndex: -1,
   currentDir: null,
   fileTree: [],
-  selectedFile: null
+  selectedFile: null,
+  autocompleteOpen: false,
+  autocompleteItems: [],
+  autocompleteSelection: 0,
+  autocompleteBasePath: '',
+  autocompletePrefix: ''
 };
 
 const selectors = {};
@@ -144,6 +171,7 @@ function cacheDom() {
   selectors.slashMenu = document.getElementById("slash-menu");
   selectors.slashGroupTpl = document.getElementById("slash-menu-template");
   selectors.slashItemTpl = document.getElementById("slash-menu-item-template");
+  selectors.autocompleteMenu = document.getElementById("autocomplete-menu");
   selectors.settingsOverlay = document.getElementById("settings-overlay");
   selectors.settingsClose = document.getElementById("settings-close");
   selectors.settingsSave = document.getElementById("settings-save");
@@ -248,6 +276,12 @@ async function onCommandSubmit(event) {
 }
 
 async function handleTerminalCommand(command) {
+  // Обработка команды clear
+  if (command.trim() === 'clear') {
+    selectors.terminalOutput.innerHTML = '';
+    return;
+  }
+  
   const placeholder = renderTerminalEntry({ command, status: "Выполняется..." });
   try {
     const result = await invoke("run_terminal_command", { command });
@@ -350,6 +384,15 @@ async function onCommandKeyDown(event) {
     return;
   }
 
+  // Ctrl/Cmd + Q - выйти из IDE в терминал
+  if ((event.ctrlKey || event.metaKey) && event.key === 'q') {
+    event.preventDefault();
+    if (state.mode === 'ide') {
+      setMode("terminal");
+    }
+    return;
+  }
+
   if (state.slashMenuOpen) {
     if (event.key === "ArrowDown" || event.key === "Tab") {
       event.preventDefault();
@@ -367,6 +410,35 @@ async function onCommandKeyDown(event) {
     } else if (event.key === "Escape") {
       closeSlashMenu();
     }
+    return;
+  }
+
+  if (state.autocompleteOpen) {
+    if (event.key === "ArrowDown" || event.key === "Tab") {
+      event.preventDefault();
+      moveAutocompleteSelection(1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveAutocompleteSelection(-1);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveAutocompleteSelection(-5);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveAutocompleteSelection(5);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      selectAutocompleteItem();
+    } else if (event.key === "Escape") {
+      closeAutocompleteMenu();
+    }
+    return;
+  }
+
+  // Tab автодополнение в терминальном режиме
+  if (event.key === "Tab" && state.mode === "terminal") {
+    event.preventDefault();
+    await handleTabCompletion();
     return;
   }
 
@@ -392,8 +464,125 @@ function navigateHistory(direction) {
   selectors.commandInput.value = state.commandHistory[state.historyIndex] || "";
 }
 
+async function handleTabCompletion() {
+  const input = selectors.commandInput.value;
+  
+  // Проверяем, это команда cd с путем?
+  const cdMatch = input.match(/^cd\s+(.*)$/);
+  if (cdMatch) {
+    await showAutocompleteMenu(cdMatch[1]);
+    return;
+  }
+  
+  // Обычное автодополнение команд (без визуального меню)
+  const matches = terminalCommands.filter(cmd => 
+    cmd.startsWith(input.toLowerCase())
+  );
+  
+  if (matches.length === 0) {
+    return;
+  }
+  
+  if (matches.length === 1) {
+    selectors.commandInput.value = matches[0] + ' ';
+    return;
+  }
+  
+  // Для нескольких совпадений можно показать меню или циклически переключать
+  // Пока просто подставляем первое
+  selectors.commandInput.value = matches[0] + ' ';
+}
+
+async function showAutocompleteMenu(pathPrefix) {
+  try {
+    const dirs = await invoke("get_directories", { prefix: pathPrefix });
+    
+    if (dirs.length === 0) {
+      closeAutocompleteMenu();
+      return;
+    }
+    
+    state.autocompleteOpen = true;
+    state.autocompleteItems = dirs;
+    state.autocompleteSelection = 0;
+    state.autocompleteBasePath = pathPrefix;
+    state.autocompletePrefix = pathPrefix;
+    
+    renderAutocompleteMenu();
+  } catch (error) {
+    console.error("Ошибка автодополнения:", error);
+    closeAutocompleteMenu();
+  }
+}
+
+function renderAutocompleteMenu() {
+  selectors.autocompleteMenu.innerHTML = "";
+  selectors.autocompleteMenu.classList.remove("hidden");
+  
+  state.autocompleteItems.forEach((dir, index) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "autocomplete-menu__item";
+    if (index === state.autocompleteSelection) {
+      item.classList.add("is-active");
+    }
+    item.textContent = dir;
+    item.addEventListener("click", () => {
+      state.autocompleteSelection = index;
+      selectAutocompleteItem();
+    });
+    selectors.autocompleteMenu.appendChild(item);
+  });
+}
+
+function moveAutocompleteSelection(delta) {
+  if (state.autocompleteItems.length === 0) return;
+  
+  state.autocompleteSelection = (state.autocompleteSelection + delta + state.autocompleteItems.length) % state.autocompleteItems.length;
+  renderAutocompleteMenu();
+}
+
+async function selectAutocompleteItem() {
+  if (state.autocompleteItems.length === 0) return;
+  
+  const selectedDir = state.autocompleteItems[state.autocompleteSelection];
+  
+  // Формируем новый путь
+  const basePath = state.autocompleteBasePath;
+  let newPath;
+  
+  if (basePath.endsWith('/')) {
+    newPath = basePath + selectedDir;
+  } else {
+    // Убираем последнюю часть пути и добавляем выбранную директорию
+    const parts = basePath.split('/');
+    parts[parts.length - 1] = selectedDir;
+    newPath = parts.join('/');
+  }
+  
+  // Обновляем ввод
+  selectors.commandInput.value = `cd ${newPath}/`;
+  
+  // Загружаем поддиректории для продолжения навигации
+  await showAutocompleteMenu(newPath + '/');
+}
+
+function closeAutocompleteMenu() {
+  state.autocompleteOpen = false;
+  state.autocompleteItems = [];
+  state.autocompleteSelection = 0;
+  selectors.autocompleteMenu.classList.add("hidden");
+  selectors.autocompleteMenu.innerHTML = "";
+}
+
 function onCommandInput(event) {
   const value = event.target.value;
+  
+  // Закрываем автодополнение при изменении ввода (кроме программного изменения)
+  if (event.inputType && state.autocompleteOpen) {
+    closeAutocompleteMenu();
+  }
+  
   if (value.startsWith("/")) {
     openSlashMenu(value.slice(1));
   } else {
@@ -561,7 +750,8 @@ async function setMode(mode, options = {}) {
     agent: "Agent"
   };
   const currentModeName = modeNames[mode] || "Терминал";
-  selectors.commandInput.placeholder = `${currentModeName} режим (/ - меню, Ctrl+T - терминал)`;
+  const shortcuts = mode === 'ide' ? '/ - меню, Ctrl+Q - выход' : '/ - меню, Ctrl+T - терминал';
+  selectors.commandInput.placeholder = `${currentModeName} режим (${shortcuts})`;
 
   if (!options.silent) {
     invoke("update_settings", { data: { mode } }).catch((error) => console.error(error));
