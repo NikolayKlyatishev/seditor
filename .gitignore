@@ -1,33 +1,20 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
+# Rust
+target/
+Cargo.lock
+
+# Node.js
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+build/
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv
-
-# Poetry
-poetry.lock
+# Tauri
+src-tauri/target/
+src-tauri/Cargo.lock
 
 # IDE
 .vscode/
@@ -35,26 +22,18 @@ poetry.lock
 *.swp
 *.swo
 *~
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
 
 # OS
-.DS_Store
 Thumbs.db
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# MyPy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Debug logs
-seditor_debug.log
-seditor_keys.log
-*.log
-
-# Seditor semantic search index
-.seditor/

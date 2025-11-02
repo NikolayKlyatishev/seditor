@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sEditor Terminal</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <div class="workspace" id="workspace">
+        <section class="pane pane--terminal" id="terminal-view">
+          <div class="pane__header">
+            <h1>Терминал</h1>
+            <span id="current-dir" class="caption"></span>
+          </div>
+          <div class="pane__body scrollable" id="terminal-output"></div>
+        </section>
+        <section class="pane pane--chat hidden" id="chat-view">
+          <div class="pane__header">
+            <h1>Чат с LLM</h1>
+            <span class="caption" id="chat-model"></span>
+          </div>
+          <div class="pane__body scrollable" id="chat-output"></div>
+        </section>
+        <section class="pane pane--ide hidden" id="ide-view">
+          <div class="pane__header">
+            <h1>Рабочее пространство</h1>
+            <span class="caption" id="ide-path"></span>
+          </div>
+          <div class="ide">
+            <nav class="ide__tree scrollable" id="file-tree"></nav>
+            <article class="ide__editor" id="editor">
+              <header class="editor__header">
+                <span id="editor-filename" class="caption"></span>
+              </header>
+              <pre class="editor__body scrollable" id="editor-content"></pre>
+            </article>
+          </div>
+        </section>
+      </div>
+
+      <footer class="command-bar">
+        <form id="command-form" class="command-form">
+          <input
+            id="command-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Введите команду или промпт (/ - меню, Ctrl+T - терминал)"
+          />
+        </form>
+        <div id="slash-menu" class="slash-menu hidden"></div>
+      </footer>
+    </div>
+
+    <div id="settings-overlay" class="overlay hidden">
+      <div class="overlay__panel">
+        <header class="overlay__header">
+          <h2>Настройки</h2>
+          <button id="settings-close" class="button button--ghost">×</button>
+        </header>
+        <div class="overlay__content">
+          <section>
+            <h3>Тема</h3>
+            <div class="option-grid" id="theme-options"></div>
+          </section>
+          <section>
+            <h3>Шрифт</h3>
+            <label class="field">
+              <span>Гарнитура</span>
+              <input id="font-family" type="text" />
+            </label>
+            <label class="field">
+              <span>Размер (px)</span>
+              <input id="font-size" type="number" min="10" max="28" />
+            </label>
+          </section>
+          <section>
+            <h3>Ollama</h3>
+            <label class="field">
+              <span>Модель</span>
+              <input id="ollama-model" type="text" />
+            </label>
+            <label class="field">
+              <span>Temperature</span>
+              <input id="ollama-temperature" type="number" step="0.1" min="0" max="2" />
+            </label>
+          </section>
+        </div>
+        <footer class="overlay__footer">
+          <button id="settings-save" class="button button--primary">Сохранить</button>
+        </footer>
+      </div>
+    </div>
+
+    <template id="slash-menu-template">
+      <div class="slash-menu__group">
+        <div class="slash-menu__title"></div>
+        <div class="slash-menu__items"></div>
+      </div>
+    </template>
+
+    <template id="slash-menu-item-template">
+      <button class="slash-menu__item" type="button"></button>
+    </template>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-toml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
+
