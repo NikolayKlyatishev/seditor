@@ -34,8 +34,22 @@
             <article class="ide__editor" id="editor">
               <header class="editor__header">
                 <span id="editor-filename" class="caption"></span>
+                <div class="editor__actions">
+                  <span id="editor-modified" class="editor__modified hidden">●</span>
+                  <button id="editor-find" class="editor__action-btn" title="Find (Ctrl+F)">🔍</button>
+                  <button id="editor-save" class="editor__save-btn" title="Save (Ctrl+S)">💾</button>
+                </div>
               </header>
-              <pre class="editor__body scrollable" id="editor-content"></pre>
+              <div id="find-replace-bar" class="find-replace-bar hidden">
+                <input type="text" id="find-input" class="find-input" placeholder="Find..." />
+                <input type="text" id="replace-input" class="find-input" placeholder="Replace..." />
+                <button id="find-next" class="find-btn">Next</button>
+                <button id="find-prev" class="find-btn">Prev</button>
+                <button id="replace-one" class="find-btn">Replace</button>
+                <button id="replace-all" class="find-btn">Replace All</button>
+                <button id="find-close" class="find-btn">×</button>
+              </div>
+              <textarea class="editor__body scrollable" id="editor-content" spellcheck="false"></textarea>
             </article>
           </div>
         </section>

@@ -3,6 +3,7 @@
 mod api;
 mod core;
 mod error;
+mod lsp;
 
 use tauri::{api::path::app_data_dir, Manager};
 
@@ -47,7 +48,10 @@ fn main() {
             api::terminal::get_directory_tree,
             api::terminal::get_directories,
             api::terminal::read_file,
+            api::terminal::write_file,
             api::chat::query_ollama_cmd,
+            api::lsp::check_lsp_server,
+            api::lsp::get_lsp_installation_instructions,
         ])
         .run(tauri::generate_context!())
         .expect("Не удалось запустить приложение Tauri");

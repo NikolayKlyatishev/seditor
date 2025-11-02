@@ -168,3 +168,29 @@ pub fn read_file(state: State<'_, AppState>, path: String) -> Result<String, Str
     Ok(content)
 }
 
+/// Записывает содержимое в файл
+#[tauri::command]
+pub fn write_file(state: State<'_, AppState>, path: String, content: String) -> Result<(), String> {
+    use std::io::Write;
+    
+    let current_dir = state.current_dir.lock().clone();
+    let absolute = PathBuf::from(&path);
+    
+    let canonical = absolute
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve path: {}", e))?;
+    
+    // Проверяем, что файл находится в текущей директории
+    if !canonical.starts_with(&current_dir) {
+        return Err(AppError::AccessDenied.to_string());
+    }
+    
+    let mut file = std::fs::File::create(&canonical)
+        .map_err(|e| format!("Failed to create file: {}", e))?;
+    
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+    
+    Ok(())
+}
+

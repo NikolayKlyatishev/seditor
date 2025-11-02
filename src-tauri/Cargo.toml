@@ -19,7 +19,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # Async runtime
-tokio = { version = "1.37", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.37", features = ["macros", "rt-multi-thread", "process", "io-util"] }
 
 # HTTP client
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
@@ -29,6 +29,11 @@ once_cell = "1.19"
 regex = "1.10"
 parking_lot = "0.12"
 directories = "5.0"
+
+# LSP
+tower-lsp = "0.20"
+lsp-types = "0.95"
+tokio-util = { version = "0.7", features = ["codec"] }
 
 [build-dependencies]
 tauri-build = { version = "1.5", features = [] }

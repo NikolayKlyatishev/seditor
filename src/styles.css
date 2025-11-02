@@ -131,6 +131,93 @@ body {
 .editor__header {
   padding: 6px 8px;
   border-bottom: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor__modified {
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.editor__action-btn,
+.editor__save-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--foreground);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.editor__action-btn:hover,
+.editor__save-btn:hover {
+  background: rgba(0, 255, 136, 0.1);
+  border-color: var(--accent);
+}
+
+.editor__action-btn:active,
+.editor__save-btn:active {
+  transform: scale(0.95);
+}
+
+.find-replace-bar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  align-items: center;
+}
+
+.find-replace-bar.hidden {
+  display: none;
+}
+
+.find-input {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  min-width: 150px;
+}
+
+.find-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.find-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--foreground);
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s ease;
+}
+
+.find-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--accent);
+}
+
+.find-btn:active {
+  transform: scale(0.95);
 }
 
 .editor__body {
@@ -141,11 +228,22 @@ body {
   overflow-x: auto;
   scroll-behavior: smooth;
   font-size: 13px;
-  white-space: pre;
+  font-family: "IBM Plex Mono", "JetBrains Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   min-height: 0;
   line-height: 1.6;
   background: #0a0a0a;
   border-radius: 4px;
+  border: none;
+  color: var(--foreground);
+  resize: none;
+  tab-size: 2;
+  white-space: pre;
+  word-wrap: normal;
+}
+
+.editor__body:focus {
+  outline: none;
+  background: #0d0d0d;
 }
 
 /* Переопределяем стили Prism для нашей темы */

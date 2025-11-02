@@ -139,7 +139,10 @@ const state = {
   autocompleteItems: [],
   autocompleteSelection: 0,
   autocompleteBasePath: '',
-  autocompletePrefix: ''
+  autocompletePrefix: '',
+  currentFile: null,
+  fileContent: '',
+  isDirty: false
 };
 
 const selectors = {};
@@ -184,6 +187,17 @@ function cacheDom() {
   selectors.editor = document.getElementById("editor");
   selectors.editorFilename = document.getElementById("editor-filename");
   selectors.editorContent = document.getElementById("editor-content");
+  selectors.editorModified = document.getElementById("editor-modified");
+  selectors.editorFind = document.getElementById("editor-find");
+  selectors.editorSave = document.getElementById("editor-save");
+  selectors.findReplaceBar = document.getElementById("find-replace-bar");
+  selectors.findInput = document.getElementById("find-input");
+  selectors.replaceInput = document.getElementById("replace-input");
+  selectors.findNext = document.getElementById("find-next");
+  selectors.findPrev = document.getElementById("find-prev");
+  selectors.replaceOne = document.getElementById("replace-one");
+  selectors.replaceAll = document.getElementById("replace-all");
+  selectors.findClose = document.getElementById("find-close");
   selectors.idePath = document.getElementById("ide-path");
 }
 
@@ -198,6 +212,15 @@ function bindEvents() {
     }
   });
   selectors.settingsSave.addEventListener("click", persistSettings);
+  selectors.editorContent.addEventListener("input", onEditorInput);
+  selectors.editorFind.addEventListener("click", toggleFindReplace);
+  selectors.editorSave.addEventListener("click", saveFile);
+  selectors.findNext.addEventListener("click", () => findNext());
+  selectors.findPrev.addEventListener("click", () => findNext(true));
+  selectors.replaceOne.addEventListener("click", replaceOne);
+  selectors.replaceAll.addEventListener("click", replaceAll);
+  selectors.findClose.addEventListener("click", closeFindReplace);
+  document.addEventListener("keydown", onGlobalKeyDown);
 }
 
 async function loadSettings() {
@@ -884,28 +907,18 @@ async function onFileNodeClick(node, container, button) {
   // Открываем файл
   try {
     const content = await invoke("read_file", { path: node.path });
+    
+    // Сохраняем состояние
+    state.currentFile = node.path;
+    state.fileContent = content;
+    state.isDirty = false;
+    
+    // Обновляем UI
     selectors.editorFilename.textContent = node.path;
+    selectors.editorContent.value = content;
+    selectors.editorModified.classList.add('hidden');
     
-    // Определяем язык по расширению файла
-    const language = detectLanguage(node.name);
-    
-    // Применяем подсветку синтаксиса
-    if (language && window.Prism && Prism.languages[language]) {
-      try {
-        const highlighted = Prism.highlight(content, Prism.languages[language], language);
-        selectors.editorContent.innerHTML = highlighted;
-        selectors.editorContent.className = `editor__body language-${language}`;
-      } catch (err) {
-        // Если подсветка не удалась, показываем plain text
-        console.warn(`Ошибка подсветки для ${language}:`, err);
-        selectors.editorContent.textContent = content;
-        selectors.editorContent.className = 'editor__body';
-      }
-    } else {
-      selectors.editorContent.textContent = content;
-      selectors.editorContent.className = 'editor__body';
-    }
-    
+    // Обновляем активный файл в дереве
     Array.from(selectors.fileTree.querySelectorAll(".file-node"))
       .forEach((el) => el.classList.remove("is-active"));
     const active = selectors.fileTree.querySelector(`[data-path="${cssEscape(node.path)}"]`);
@@ -914,7 +927,7 @@ async function onFileNodeClick(node, container, button) {
       moveIndicator(active, "file-tree-indicator");
     }
   } catch (error) {
-    selectors.editorContent.textContent = `Не удалось загрузить файл: ${error}`;
+    selectors.editorContent.value = `Не удалось загрузить файл: ${error}`;
   }
 }
 
@@ -967,5 +980,153 @@ function escapeHtml(text = "") {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+// Editor functions
+function onEditorInput() {
+  if (!state.currentFile) return;
+  
+  const currentContent = selectors.editorContent.value;
+  state.isDirty = currentContent !== state.fileContent;
+  
+  if (state.isDirty) {
+    selectors.editorModified.classList.remove('hidden');
+  } else {
+    selectors.editorModified.classList.add('hidden');
+  }
+}
+
+async function saveFile() {
+  if (!state.currentFile || !state.isDirty) return;
+  
+  try {
+    const content = selectors.editorContent.value;
+    await invoke("write_file", { 
+      path: state.currentFile, 
+      content: content 
+    });
+    
+    state.fileContent = content;
+    state.isDirty = false;
+    selectors.editorModified.classList.add('hidden');
+    
+    console.log(`File saved: ${state.currentFile}`);
+  } catch (error) {
+    console.error("Failed to save file:", error);
+    alert(`Failed to save file: ${error}`);
+  }
+}
+
+function onGlobalKeyDown(event) {
+  // Ctrl+S / Cmd+S для сохранения
+  if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+    event.preventDefault();
+    if (state.currentFile && state.isDirty) {
+      saveFile();
+    }
+  }
+  
+  // Ctrl+F / Cmd+F для поиска
+  if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+    event.preventDefault();
+    toggleFindReplace();
+  }
+  
+  // Esc для закрытия find/replace
+  if (event.key === 'Escape' && !selectors.findReplaceBar.classList.contains('hidden')) {
+    closeFindReplace();
+  }
+}
+
+// Find/Replace functions
+function toggleFindReplace() {
+  const isHidden = selectors.findReplaceBar.classList.contains('hidden');
+  if (isHidden) {
+    selectors.findReplaceBar.classList.remove('hidden');
+    selectors.findInput.focus();
+    
+    // Если есть выделенный текст, используем его как поисковый запрос
+    const selectedText = selectors.editorContent.value.substring(
+      selectors.editorContent.selectionStart,
+      selectors.editorContent.selectionEnd
+    );
+    if (selectedText) {
+      selectors.findInput.value = selectedText;
+    }
+  } else {
+    closeFindReplace();
+  }
+}
+
+function closeFindReplace() {
+  selectors.findReplaceBar.classList.add('hidden');
+  selectors.editorContent.focus();
+}
+
+function findNext(reverse = false) {
+  const searchText = selectors.findInput.value;
+  if (!searchText) return;
+  
+  const content = selectors.editorContent.value;
+  const currentPos = selectors.editorContent.selectionStart;
+  
+  let index;
+  if (reverse) {
+    // Поиск назад
+    index = content.lastIndexOf(searchText, currentPos - 1);
+    if (index === -1) {
+      // Если не найдено, начинаем с конца
+      index = content.lastIndexOf(searchText);
+    }
+  } else {
+    // Поиск вперед
+    index = content.indexOf(searchText, selectors.editorContent.selectionEnd);
+    if (index === -1) {
+      // Если не найдено, начинаем с начала
+      index = content.indexOf(searchText);
+    }
+  }
+  
+  if (index !== -1) {
+    selectors.editorContent.focus();
+    selectors.editorContent.setSelectionRange(index, index + searchText.length);
+    selectors.editorContent.scrollTop = selectors.editorContent.scrollHeight * (index / content.length);
+  }
+}
+
+function replaceOne() {
+  const searchText = selectors.findInput.value;
+  const replaceText = selectors.replaceInput.value;
+  if (!searchText) return;
+  
+  const start = selectors.editorContent.selectionStart;
+  const end = selectors.editorContent.selectionEnd;
+  const selectedText = selectors.editorContent.value.substring(start, end);
+  
+  if (selectedText === searchText) {
+    const content = selectors.editorContent.value;
+    selectors.editorContent.value = content.substring(0, start) + replaceText + content.substring(end);
+    selectors.editorContent.setSelectionRange(start, start + replaceText.length);
+    
+    // Trigger input event to mark as dirty
+    selectors.editorContent.dispatchEvent(new Event('input'));
+  }
+  
+  // Find next occurrence
+  findNext();
+}
+
+function replaceAll() {
+  const searchText = selectors.findInput.value;
+  const replaceText = selectors.replaceInput.value;
+  if (!searchText) return;
+  
+  const content = selectors.editorContent.value;
+  const newContent = content.split(searchText).join(replaceText);
+  
+  if (newContent !== content) {
+    selectors.editorContent.value = newContent;
+    selectors.editorContent.dispatchEvent(new Event('input'));
+  }
 }
 
