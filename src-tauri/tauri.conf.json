@@ -1,0 +1,52 @@
+{
+  "package": {
+    "productName": "sEditor Terminal",
+    "version": "0.1.0"
+  },
+  "build": {
+    "beforeBuildCommand": "",
+    "beforeDevCommand": "",
+    "devPath": "../dist",
+    "distDir": "../dist"
+  },
+  "tauri": {
+    "windows": [
+      {
+        "title": "sEditor",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "center": true
+      }
+    ],
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.seditor.app",
+      "icon": []
+    },
+    "security": {
+      "csp": null
+    },
+    "allowlist": {
+      "http": {
+        "all": true
+      },
+      "shell": {
+        "all": false,
+        "execute": true,
+        "sidecar": false,
+        "scope": []
+      },
+      "fs": {
+        "all": false,
+        "readFile": true,
+        "scope": ["**"]
+      }
+    }
+  }
+}
+
